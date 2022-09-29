@@ -48,6 +48,7 @@ typedef struct {
 //TO DO:
 //TASK 2
 //Give DELAY1 and DELAY2 sensible values
+//calculated with a frequency calculation
 #define DELAY1 500
 #define DELAY2 6000
 
@@ -71,7 +72,7 @@ UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
-char buffer[18];
+char buffer[30];
 uint8_t data [] = "Hello from STM32!\r\n";
 TIME time;
 /* USER CODE END PV */
@@ -146,26 +147,36 @@ int main(void){
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+
+  //set the time of the RTC initially to a set value (20 September 2022, 12:00 PM)
+  setTime(decToBcd(0), decToBcd(0), decToBcd(12), decToBcd(2), decToBcd(20), decToBcd(9), decToBcd(22));
+
+
 	  while (1)
 	    {
 	      /* USER CODE END WHILE */
 	  	//TO DO:
 	  	//TASK 1
 	  	//First run this with nothing else in the loop and scope pin PC8 on an oscilloscope
+          //SWITCH ON BLUE LED
 	  	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+          //delay (argument x is the duration of the delay)
 	  	pause_sec(1);
 	  	//TO DO:
 	  	//TASK 6
+          //get the time from the RTC
 	  	getTime();
-	  	sprintf(buffer, "%d-%d-%d %d:%d:%d \r\n", 2000+bcdToDec(time.year), bcdToDec(time.month), bcdToDec(time.dayofmonth), bcdToDec(time.hour), bcdToDec(time.minutes), bcdToDec(time.seconds));
+          //Print out the time by converting each value of the time struct (stored as binary coded decimal) to decimal values
+	  	sprintf(buffer, "%d-%d-%d %d:%d:%d\r\n", bcdToDec(time.year), bcdToDec(time.month), bcdToDec(time.dayofmonth), bcdToDec(time.hour), bcdToDec(time.minutes), bcdToDec(time.seconds));
 	  	HAL_UART_Transmit(&huart2, buffer, sizeof(buffer), 1000);
-	  	sprintf(buffer, "\n %d", epochFromTime(time));
+
+          //print out epoch time
+	  	sprintf(buffer, "%d\n\n", epochFromTime(time));
 	  	HAL_UART_Transmit(&huart2, buffer, sizeof(buffer), 1000);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
+
 }
 
 
@@ -353,7 +364,7 @@ void pause_sec(float x)
 	/* Delay program execution for x seconds */
 	//TO DO:
 	//TASK 2
-	//Make sure you've defined DELAY1 and DELAY2 in the private define section
+	//nested for loops that run for 1*x seconds
 	volatile int i, j;
 	for (i=0; i<=x*DELAY1;i++)
 		for (j=0; j<=DELAY2;j++);
@@ -363,39 +374,47 @@ void pause_sec(float x)
 
 uint8_t decToBcd(int val)
 {
-
+    //initialise default values
 	uint8_t first = 0, second = 0, bcd_value;
+
 	// retrieve the decimal val
 	first = val/10;
 	second = val%10;
 
 	// more than two digits get 'cutoff' to fit in uint8
 	if (val>99){
+        //shift left 4 places
 		first = first<<4;
 	}
 
+    //4th bit -> 2^4 = 16
 	first = first*16;
 	bcd_value = (uint8_t) (first+second);
 	return bcd_value;
-
 
 }
 
 int bcdToDec(uint8_t val)
 {
-
+        //count is number of bits-1 in the bcd value
+        //sum keeps track of the dec value
         int count = 7, sum = 0;
         unsigned i;
+        //iterates through the bcd value from the LSB towards the MSB
         for (i = 1 << 7; i > 0; i = i / 2) {
+            //if a 1 at that position
             if (val & i) {
+                //if the digit is in the first 4 bits from the left (4 most significant bits) (i.e make up the 10s value of the decimal value)
                 if (count > 3) {
+                    //get the decimal equivalent at that position and times it by 10 so it is included the 10s position of the decimal value
                     sum += pow(2, count - 4) * 10;
 
-
                 } else {
+                    //otherwise,the value is in the digit position of the decimal value and just the direct binary equivalent is included
                     sum += pow(2, count);
                 }
             }
+            //decrement the position
             count--;
         }
 
@@ -409,6 +428,7 @@ void setTime (uint8_t sec, uint8_t min, uint8_t hour, uint8_t dow, uint8_t dom, 
 	//TO DO:
 	//TASK 4
 
+    //create an array to store all 7 values
 	uint8_t set_time[7];
 
 	set_time[0] = sec;
@@ -442,6 +462,7 @@ void getTime (void)
 	//and it will read 1 byte of data, increment the register address, write another byte and so on
 	HAL_I2C_Mem_Read(&hi2c1, DS3231_ADDRESS, 0x00, 1, get_time, 7, 1000);
 
+    //store each value from the RTC in the time struct accordingly
 	time.seconds = get_time[0];
 	time.minutes = get_time[1];
 	time.hour = get_time[2];
@@ -464,23 +485,32 @@ int epochFromTime(TIME time){
 
 	//first, the number of days that have passed since the first of January that year are calculated so that the number of seconds passed in the year can be calculated
 
+    //store the days in each month, where index 0 = january, 1 = february, etc
 	int daysInMonths [] = {31,28,31,30,31,30,31,31,30,31,30,31};
-	//add days completed in current month
-	int daysSinceBeginningOfYear = time.dayofmonth;
-	//add all days before the current month
-	for (int i = 0; i < (time.month)-1 ; i++)
+
+	//initially add days completed in current month (i.e if the date is the 9th of January, store 8 since 8 full days have passed in the month)
+	int daysSinceBeginningOfYear = bcdToDec(time.dayofmonth) - 1;
+
+	//then, add all days that have gone by before the current month by tallying the days in each month up until the current month (i.e if it is march, tally all days in january and february)
+	for (int i = 0; i < (bcdToDec(time.month))-1 ; i++)
 	{
 		daysSinceBeginningOfYear += daysInMonths[i];
 	}
-	//next the number of seconds that passed in the year are calculated
-	int secondsInCurrentYear = time.seconds + (time.minutes*60) + (time.hour*3600) + (daysSinceBeginningOfYear * 86400) ;
-	//next the seconds in the years that have passed since 2022 are calculated
-	int yearDifferenceInSeconds = (2000 + time.year- 2022)*31536000;
-	//next the total time that has passed since January 1st 2022 is totalled
+
+	//next the number of seconds that passed in the current year are calculated by multiplying the minutes by 60, the hours by 36000 and the days by 86400 and summing them all together with the seconds
+    //the hours are increased by 2 to account for time zone differences
+	int secondsInCurrentYear = bcdToDec(time.seconds) + (bcdToDec(time.minutes)*60) + ((bcdToDec(time.hour)+2)*3600) + (daysSinceBeginningOfYear * 86400) ;
+
+    //next the seconds in the years that have passed since 2022 are calculated by multiplying the difference in years by the number of seconds in a year
+	int yearDifferenceInSeconds = (2000 + bcdToDec(time.year)- 2022)*31536000;
+
+	//next the total time that has passed since January 1st 2022 is totaled
 	int secondsSinceStartingPt = yearDifferenceInSeconds + secondsInCurrentYear;
-	//next the starting point is added to this value to get total epoch time
+
+    //next the starting point is added to this value to get total epoch time
 	int epochTime = EPOCH_2022 + secondsSinceStartingPt;
-	return epochTime;;
+
+    return epochTime;;
 
 }
 
@@ -501,6 +531,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 
 #ifdef  USE_FULL_ASSERT
 /**

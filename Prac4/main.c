@@ -121,7 +121,7 @@ uint32_t triangle_LUT[NS] = {16,32,48,64,80,96,112,128,
 //Calculate TIM2_Ticks
 
 //TIM2_TICKS = (TIM2CLK/F_SIGNAL)*NS
-uint32_t TIM2_Ticks = ((TIM2CLK/F_SIGNAL)*NS)/1000; // adjust the 100 based on what it looks like
+uint32_t TIM2_Ticks = (TIM2CLK/(F_SIGNAL*NS))/1000; // adjust the 100 based on what it looks like
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
